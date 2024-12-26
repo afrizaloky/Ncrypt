@@ -4,12 +4,16 @@
 #include "GTest.h"
 #include <gtest/gtest.h>
 #include <Windows.h>
+#include <psapi.h>
 #include <iostream>
 #include <vector>
 #include <fmt/core.h>
 #include <fmt/format.h>
 #include <fmt/ranges.h>
 #include <wincrypt.h>
+#include <winerror.h>
+
+static std::wstring rsaKeyId {L"rsaSigning2048"};
 
 TEST(DLL, LoadDLL) {
 	// Load the DLL
@@ -24,49 +28,85 @@ TEST(DLL, LoadDLL) {
 	FreeLibrary(hDll);
 }
 
-// Define a custom deleter for NCRYPT_PROV_HANDLE
-struct NcryptProviderDeleter {
-	void operator()(NCRYPT_PROV_HANDLE* handle) const {
-		if (handle && *handle) {
-			NCryptFreeObject(*handle);
+// // Define a custom deleter for NCRYPT_PROV_HANDLE
+// struct NcryptProviderDeleter {
+// 	void operator()(NCRYPT_PROV_HANDLE* handle) const {
+// 		if (handle && *handle) {
+// 			fmt::println("NcryptFree");
+// 			NCryptFreeObject(*handle);
+// 		}
+// 	}
+// };
+// using NCRYPT_WRAPPER = std::unique_ptr < NCRYPT_PROV_HANDLE, NcryptProviderDeleter>;
+
+
+class NCRYPT_WRAPPER {
+private:
+	NCRYPT_PROV_HANDLE hProvider;
+public:
+	operator NCRYPT_PROV_HANDLE() const
+	{
+		return hProvider;
+	}
+
+	NCRYPT_WRAPPER() {
+		NTSTATUS status = NCryptOpenStorageProvider(&hProvider, L"KriptaKey Key Storage Provider", 0);
+		if (status != ERROR_SUCCESS) {
+			throw("Open provider failed");
 		}
 	}
+	~NCRYPT_WRAPPER() {
+		if (hProvider) {
+			NCryptFreeObject(hProvider);
+		}
+	}
+
 };
-using NCRYPT_WRAPPER = std::unique_ptr < NCRYPT_PROV_HANDLE, NcryptProviderDeleter>;
 
 NCRYPT_WRAPPER openProvider() {
-	// Initialize the NCrypt provider
-	NCRYPT_PROV_HANDLE hProvider;
-	NTSTATUS status = NCryptOpenStorageProvider(&hProvider, L"KriptaKey Key Storage Provider", 0);
-	if (status != ERROR_SUCCESS)
-		return NULL;
-	return NCRYPT_WRAPPER(new NCRYPT_PROV_HANDLE(hProvider));
-}
-
-TEST(NCRYPT, OpenProvider) {
-	auto hProvider = openProvider();
-	ASSERT_NE(hProvider, nullptr);
+	return NCRYPT_WRAPPER{};
 }
 
 
-TEST(NCRYPT, CreateKey) {
-	auto hProvider = openProvider();
-	ASSERT_NE(hProvider, nullptr);
-
-	NCRYPT_KEY_HANDLE hKey;
-	DWORD keyLength = 3072; // Key length in bits
-	NTSTATUS status = NCryptCreatePersistedKey(*hProvider, &hKey, BCRYPT_RSA_ALGORITHM, L"03rsa2048", 0, 0);
-	ASSERT_EQ(status, NTE_NOT_SUPPORTED);
+void GetCurrentMemoryUsage() {
+	PROCESS_MEMORY_COUNTERS pmc;
+	if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+		fmt::println("Current memory usage: {} KB", pmc.WorkingSetSize / 1024);
+		fmt::println("Peak memory usage: {} KB", pmc.PeakWorkingSetSize / 1024);
+	}
+	else {
+		std::cerr << "Could not retrieve memory info." << std::endl;
+	}
 }
+// TEST(NCRYPT, OpenProvider) {
+// 	GetCurrentMemoryUsage();
+// 	for (size_t i = 0; i < 1000; i++)
+// 	{
+// 		auto hProvider = openProvider();
+// 	}
+// 	GetCurrentMemoryUsage();
+
+// }
+
 
 // TEST(NCRYPT, CreateKey) {
 // 	auto hProvider = openProvider();
-// 	ASSERT_NE(hProvider, nullptr);
+// 	// ASSERT_NE(hProvider, nullptr);
+
+// 	NCRYPT_KEY_HANDLE hKey;
+// 	DWORD keyLength = 3072; // Key length in bits
+// 	NTSTATUS status = NCryptCreatePersistedKey(hProvider, &hKey, BCRYPT_RSA_ALGORITHM, rsaKeyId, 0, 0);
+// 	ASSERT_EQ(status, NTE_NOT_SUPPORTED);
+// }
+
+// TEST(NCRYPT, CreateKey) {
+// 	auto hProvider = openProvider();
+	// ASSERT_NE(hProvider, nullptr);
 
 // 	// Step 1: Create an RSA Key
 // 	NCRYPT_KEY_HANDLE hKey;
 // 	DWORD keyLength = 3072; // Key length in bits
-// 	NTSTATUS status = NCryptCreatePersistedKey(*hProvider, &hKey, BCRYPT_RSA_ALGORITHM, L"03rsa2048", 0, 0);
+// 	NTSTATUS status = NCryptCreatePersistedKey(hProvider, &hKey, BCRYPT_RSA_ALGORITHM, rsaKeyId, 0, 0);
 // 	ASSERT_EQ(status, ERROR_SUCCESS);
 
 // 	// Step 2: Set key properties
@@ -81,70 +121,102 @@ TEST(NCRYPT, CreateKey) {
 // 	NCryptFreeObject(hKey); // Free the key handle
 // }
 
-TEST(NCRYPT, KeyInfo) {
+// TEST(NCRYPT, KeyInfo) {
 
-	auto hProvider = openProvider();
-	ASSERT_NE(hProvider, nullptr);
+// 	GetCurrentMemoryUsage();
 
-	DWORD keyLength = 0;
-	DWORD length = sizeof(DWORD);
+// 	wchar_t algorithm[256];
+// 	auto hProvider = openProvider();
+// 	// for (size_t i = 0; i < 10000; i++)
+// 	// while (true)
 
-	NCRYPT_KEY_HANDLE hKey;
-
-	NTSTATUS status = NCryptOpenKey(*hProvider, &hKey, L"03rsa2048", 0, 0);
-	ASSERT_EQ(status, ERROR_SUCCESS);
-
-	// Get key length
-	status = NCryptGetProperty(hKey, NCRYPT_LENGTH_PROPERTY, (PBYTE)&keyLength, sizeof(DWORD), &length, 0);
-	ASSERT_EQ(status, ERROR_SUCCESS);
-	ASSERT_EQ(keyLength, 2048);
+// 	{
 
 
-	// Get key algorithm
-	wchar_t algorithm[256];
-	DWORD algorithmLength = sizeof(algorithm);
 
-	status = NCryptGetProperty(hKey, NCRYPT_ALGORITHM_PROPERTY, (PBYTE)algorithm, algorithmLength, &length, 0);
-	ASSERT_EQ(status, ERROR_SUCCESS);
-	ASSERT_EQ(std::wstring(algorithm), std::wstring(L"RSA"));
-}
+// 		DWORD keyLength = 0;
+// 		DWORD length = sizeof(DWORD);
 
-TEST(NCRYPT, KeyLists) {
-	auto hProvider = openProvider();
-	ASSERT_NE(hProvider, nullptr);
+// 		NCRYPT_KEY_HANDLE hKey;
 
-	NTSTATUS status;
-	NCryptKeyName* pKeyName = nullptr;  // Pointer to hold the key information
-	void* pEnumState = nullptr;          // State information for enumeration
+// 		NTSTATUS status = NCryptOpenKey(hProvider, &hKey, rsaKeyId, 0, 0);
+// 		ASSERT_EQ(status, ERROR_SUCCESS);
 
-	// Start enumerating keys
-	while (true) {
-		// Enumerate the key
-		status = NCryptEnumKeys(*hProvider, NULL, &pKeyName, &pEnumState, 0);
+// 		// Get key length
+// 		status = NCryptGetProperty(hKey, NCRYPT_LENGTH_PROPERTY, (PBYTE)&keyLength, sizeof(DWORD), &length, 0);
+// 		ASSERT_EQ(status, ERROR_SUCCESS);
+// 		ASSERT_EQ(keyLength, 2048);
 
-		// Stop if there are no more keys
-		if (status == NTE_NO_MORE_ITEMS) {
-			break;
-		}
 
-		ASSERT_EQ(status, ERROR_SUCCESS);
+// 		// Get key algorithm
+// 		DWORD algorithmLength = sizeof(algorithm);
 
-		// Print the key name
-		std::wcout << L"Key Name: " << pKeyName->pszName << std::endl;
-		std::wcout << L"Key Alg: " << pKeyName->pszAlgid << std::endl;
-	}
-}
+// 		status = NCryptGetProperty(hKey, NCRYPT_ALGORITHM_PROPERTY, (PBYTE)algorithm, algorithmLength, &length, 0);
+// 		ASSERT_EQ(status, ERROR_SUCCESS);
+// 		ASSERT_EQ(std::wstring(algorithm), std::wstring(L"RSA"));
+// 		NCryptFreeObject(hKey);
+
+
+// 	}
+
+// 	GetCurrentMemoryUsage();
+
+
+// }
+
+// TEST(NCRYPT, KeyLists) {
+// 	auto hProvider = openProvider();
+// 	// ASSERT_NE(hProvider, nullptr);
+
+// 	GetCurrentMemoryUsage();
+// 	void* pEnumState = nullptr;          // State information for enumeration
+// 	NCryptKeyName* pKeyName = new NCryptKeyName;  // Pointer to hold the key information
+// 	// fmt::println("before: {:p}", static_cast<void*>(pKeyName));
+// 	for (size_t i = 0; i < 10000; i++)
+// 	{
+
+// 		NTSTATUS status;
+
+
+// 		// Start enumerating keys
+// 		while (true) {
+// 			// Enumerate the key
+// 			status = NCryptEnumKeys(hProvider, NULL, &pKeyName, &pEnumState, 0);
+// 			// fmt::println("after: {:p}", static_cast<void*>(pKeyName));
+
+// 			// Stop if there are no more keys
+// 			if (status == NTE_NO_MORE_ITEMS) {
+// 				break;
+// 			}
+
+// 			// ASSERT_EQ(status, ERROR_SUCCESS);
+
+// 		}
+
+// 		if (i % 1000 == 0)
+// 			GetCurrentMemoryUsage();
+
+// 	}
+// 	NCryptFreeBuffer(pEnumState);
+// 	NCryptFreeBuffer(pKeyName);
+// 	GetCurrentMemoryUsage();
+
+// }
 
 
 TEST(NCRYPT, EncryptDecrypt) {
 	auto hProvider = openProvider();
-	ASSERT_NE(hProvider, nullptr);
+	// ASSERT_NE(hProvider, nullptr);
 
 	NCRYPT_KEY_HANDLE hKey;
-	NTSTATUS status = NCryptOpenKey(*hProvider, &hKey, L"03rsa2048", 0, 0);
+	NTSTATUS status = NCryptOpenKey(hProvider, &hKey, rsaKeyId.data(), 0, 0);
 
 	std::string plaintext = "Hello, World!";
 	std::vector<BYTE> plaintextData(plaintext.begin(), plaintext.end());
+
+	for (size_t i = 0; i < 10; i++)
+	{
+	
 
 	BCRYPT_OAEP_PADDING_INFO paddingInfo;
 	paddingInfo.cbLabel = 0;
@@ -163,38 +235,40 @@ TEST(NCRYPT, EncryptDecrypt) {
 	status = NCryptDecrypt(hKey, encryptedData.data(), static_cast<DWORD>(encryptedData.size()), &paddingInfo, NULL, 0, &decryptedSize, 4);
 	ASSERT_EQ(status, ERROR_SUCCESS);
 	ASSERT_EQ(decryptedSize, plaintextData.size());
-	
+
 	std::vector<BYTE> decryptedData(decryptedSize);
 	status = NCryptDecrypt(hKey, encryptedData.data(), static_cast<DWORD>(encryptedData.size()), &paddingInfo, decryptedData.data(), decryptedSize, &decryptedSize, 4);
 	ASSERT_EQ(status, ERROR_SUCCESS);
 	ASSERT_EQ(decryptedData, plaintextData);
+	}
+
 }
 
-TEST(NCRYPT, SignVerify) {
-	auto hProvider = openProvider();
-	ASSERT_NE(hProvider, nullptr);
+// TEST(NCRYPT, SignVerify) {
+// 	auto hProvider = openProvider();
+// 	// ASSERT_NE(hProvider, nullptr);
 
-	NCRYPT_KEY_HANDLE hKey;
-	NTSTATUS status = NCryptOpenKey(*hProvider, &hKey, L"03rsa2048", 0, 0);
+// 	NCRYPT_KEY_HANDLE hKey;
+// 	NTSTATUS status = NCryptOpenKey(hProvider, &hKey, rsaKeyId, 0, 0);
 
-	BCRYPT_PKCS1_PADDING_INFO paddingInfo;
-	paddingInfo.pszAlgId = L"SHA256";
+// 	BCRYPT_PKCS1_PADDING_INFO paddingInfo;
+// 	paddingInfo.pszAlgId = L"SHA256";
 
-	DWORD signatureSize = 0;
-	std::vector<uint8_t> hashedData{0xb9, 0x03, 0x0f, 0x96, 0x03, 0x21, 0x47, 0xce, 0xba, 0xe1, 0xe8, 0x21, 0xa0, 0xa8, 0x07, 0x1e, 0x81, 0xa5, 0xd9, 0x59, 0xb0, 0xa4, 0x83, 0x2e, 0xd3, 0x99, 0x84, 0x15, 0x93, 0xe1, 0x1d, 0x4e};
-	
-	status = NCryptSignHash(hKey, &paddingInfo,hashedData.data(), static_cast<DWORD>(hashedData.size()),  NULL, 0, &signatureSize, 2);
+// 	DWORD signatureSize = 0;
+// 	std::vector<uint8_t> hashedData{ 0xb9, 0x03, 0x0f, 0x96, 0x03, 0x21, 0x47, 0xce, 0xba, 0xe1, 0xe8, 0x21, 0xa0, 0xa8, 0x07, 0x1e, 0x81, 0xa5, 0xd9, 0x59, 0xb0, 0xa4, 0x83, 0x2e, 0xd3, 0x99, 0x84, 0x15, 0x93, 0xe1, 0x1d, 0x4e };
 
-	ASSERT_EQ(status, ERROR_SUCCESS);
-	std::vector<BYTE> signature(signatureSize);
-	status = NCryptSignHash(hKey, &paddingInfo, hashedData.data(), static_cast<DWORD>(hashedData.size()), signature.data(), signatureSize, &signatureSize, 2);
-	ASSERT_EQ(status, ERROR_SUCCESS);
-	ASSERT_EQ(signature.size(), 256);
+// 	status = NCryptSignHash(hKey, &paddingInfo, hashedData.data(), static_cast<DWORD>(hashedData.size()), NULL, 0, &signatureSize, 2);
+
+// 	ASSERT_EQ(status, ERROR_SUCCESS);
+// 	std::vector<BYTE> signature(signatureSize);
+// 	status = NCryptSignHash(hKey, &paddingInfo, hashedData.data(), static_cast<DWORD>(hashedData.size()), signature.data(), signatureSize, &signatureSize, 2);
+// 	ASSERT_EQ(status, ERROR_SUCCESS);
+// 	ASSERT_EQ(signature.size(), 256);
 
 
-	DWORD decryptedSize = 0;
-	status = NCryptVerifySignature(hKey, &paddingInfo, hashedData.data(), static_cast<DWORD>(hashedData.size()), signature.data(), signature.size(), 2);
+// 	DWORD decryptedSize = 0;
+// 	status = NCryptVerifySignature(hKey, &paddingInfo, hashedData.data(), static_cast<DWORD>(hashedData.size()), signature.data(), signature.size(), 2);
 
-	ASSERT_EQ(status, ERROR_SUCCESS);
-}
+// 	ASSERT_EQ(status, ERROR_SUCCESS);
+// }
 

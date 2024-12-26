@@ -10,8 +10,8 @@ execute_process(
 # vcpkg
 #===============================================================================
 
-if(CMAKE_GENERATOR_PLATFORM EQUAL "x64")
-
+message(${ARCHITECTURE})
+if(ARCHITECTURE EQUAL "x64")
     set(VCPKG_TARGET_TRIPLET "x64-windows-static")
     set(ENV{VCPKG_DEFAULT_TRIPLET} "x64-windows-static")
     set(ENV{VCPKG_DEFAULT_HOST_TRIPLET} "x64-windows-static")

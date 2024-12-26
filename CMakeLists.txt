@@ -19,7 +19,8 @@ else()
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")  # Static Release
 endif()
 
-if(CMAKE_GENERATOR_PLATFORM EQUAL "x64")
+# message(${CMAKE_GENERATOR_PLATFORM})
+if(ARCHITECTURE EQUAL "x64")
     message(STATUS "Configuring for x64 (64-bit)")
     # Add x64 specific configurations
 else()
