@@ -13,7 +13,7 @@
 
 TEST(DLL, LoadDLL) {
 	// Load the DLL
-	HMODULE hDll = LoadLibrary("C:/Windows/SysWOW64/KeyStorageProvider.dll");
+	HMODULE hDll = LoadLibrary("C:/Windows/System32/KeyStorageProvider.dll");
 	if (!hDll) {
 		std::cerr << "Could not load the DLL!" << std::endl;
 	}

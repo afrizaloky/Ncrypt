@@ -4,7 +4,8 @@
 
 # Add source to this project's executable.
 add_executable (GTest "GTest.cpp" "GTest.h")
-target_link_libraries(GTest PRIVATE fmt::fmt GTest::gtest_main ncrypt kernel32    # Core Windows API functions
+target_link_libraries(GTest PRIVATE fmt::fmt GTest::gtest_main 
+    ncrypt kernel32    # Core Windows API functions
     user32      # GUI-related functions
     gdi32       # Graphics Device Interface
     ntdll       # NT API functions, & wntdll if you're referring to it
